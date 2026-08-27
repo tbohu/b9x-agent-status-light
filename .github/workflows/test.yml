@@ -11,7 +11,7 @@ jobs:
   macos:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Python tests
         run: /usr/bin/python3 -m unittest discover -s tests -v
       - name: Compile CoreBluetooth CLI
