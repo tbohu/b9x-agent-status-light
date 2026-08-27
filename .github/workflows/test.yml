@@ -1,0 +1,26 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python tests
+        run: /usr/bin/python3 -m unittest discover -s tests -v
+      - name: Compile CoreBluetooth CLI
+        run: swiftc src/b9x_light.swift -o "$RUNNER_TEMP/b9x-light"
+      - name: Isolated installer round trip
+        run: |
+          chmod +x install.sh uninstall.sh
+          test_home=$(mktemp -d)
+          ./install.sh --home "$test_home" --no-launch
+          HOME="$test_home" "$test_home/.local/bin/b9x-agent-status" status
+          ./uninstall.sh --home "$test_home" --no-launch
+          test ! -e "$test_home/Library/Application Support/B9X Agent Status Light"

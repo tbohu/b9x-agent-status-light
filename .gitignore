@@ -1,0 +1,11 @@
+.DS_Store
+__pycache__/
+*.pyc
+build/
+dist/
+captures/
+work/
+*.apk
+*.zip
+*.log
+b9x-light
