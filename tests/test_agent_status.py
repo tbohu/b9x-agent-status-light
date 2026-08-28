@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -75,6 +76,23 @@ class AgentStatusTests(unittest.TestCase):
         self.event("claude", "StopFailure", error="rate_limit")
         status, _ = monitor.desired_status(self.states(), 0, False)
         self.assertEqual(status, "error")
+
+    def test_new_hook_event_reapplies_unchanged_color(self):
+        monitor = load_monitor()
+        self.event("claude", "UserPromptSubmit")
+        runtime = {"desired_color": "yellow", "processed_wake_at": 0}
+        completed = subprocess.CompletedProcess([], 0, "COLOR_SET color=yellow\n", "")
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor, "MONITOR_STATE", self.state / "monitor.json"),
+            mock.patch.object(monitor, "CONTROL_STATE", self.state / "control.json"),
+            mock.patch.object(monitor, "WAKE_STATE", self.state / "wake.json"),
+            mock.patch.object(monitor, "codex_snapshot", return_value=(0, {}, False, False)),
+            mock.patch.object(monitor.subprocess, "run", return_value=completed) as light,
+        ):
+            result = monitor.reconcile(runtime)
+        light.assert_called_once()
+        self.assertEqual(result["applied_color"], "yellow")
 
 
 if __name__ == "__main__":

@@ -86,8 +86,8 @@ b9x-agent-status reapply
 
 - `acknowledge` clears latched red states.
 - `reapply` performs one explicit retry after the B9X is powered back on.
-- The monitor writes only when the desired color changes. It does not loop on
-  BLE reconnects.
+- The monitor writes when the desired color changes or a new lifecycle event
+  arrives. It does not continuously poll or loop on BLE reconnects.
 
 ## How it works
 
@@ -95,7 +95,8 @@ Codex working/completed/failed turns are observed from its local SQLite history
 in read-only mode. Codex hooks add immediate approval-needed events. Claude
 Code uses lifecycle hooks for prompt start, stop, failures, permissions, and
 elicitation. A local LaunchAgent aggregates all sessions and calls the verified
-BLE CLI only when the aggregate color changes.
+BLE CLI when the aggregate color changes or a new lifecycle event needs to
+reassert the current color.
 
 See [architecture](docs/architecture.md) and the
 [verified B9X protocol](docs/protocol.md).

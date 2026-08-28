@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 - 2026-08-28
+
+- Reapply the current B9X color when a new agent lifecycle event arrives, even
+  when the aggregate status did not change.
+- Prevent a powered-on or reconnected B9X from remaining green while Claude
+  Code is already working.
+
 ## 0.1.0 - 2026-08-27
 
 - Add verified B9X fixed-color control over CoreBluetooth.
