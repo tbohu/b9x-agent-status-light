@@ -31,6 +31,10 @@ Claude hooks + transcript tail ──┘                red > yellow > green
 Red is latched across `Stop`. It is cleared by a new prompt for that session or
 by `b9x-agent-status acknowledge`.
 
+A Claude `PostToolUseFailure` is recoverable and stays yellow while Claude
+continues. A terminal `StopFailure`, permission request, or elicitation remains
+red because the turn ended or human attention is required.
+
 Codex SQLite is authoritative for Codex working/idle state. Hook state adds the
 approval information absent from SQLite. Historical failed turns present at
 first monitor startup are ignored; only a newly observed transition to

@@ -66,9 +66,11 @@ def update_state(provider: str, payload: dict) -> dict:
 
     if event == "UserPromptSubmit":
         status, latched = "working", False
+    elif event == "PostToolUseFailure":
+        status, latched = "working", False
+        detail = "recovering_after_tool_failure"
     elif event in {
         "PermissionRequest",
-        "PostToolUseFailure",
         "StopFailure",
         "PermissionDenied",
         "Elicitation",

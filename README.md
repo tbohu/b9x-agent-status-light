@@ -114,7 +114,9 @@ event. Therefore approval requests and failed turns become red, but an
 arbitrary mid-turn question may remain yellow until the turn resolves.
 
 Claude Code permission, elicitation, tool-failure, and API-failure states are
-covered by its hooks. See the official [Claude Code Hooks reference](https://code.claude.com/docs/en/hooks).
+covered by its hooks. A recoverable tool failure remains yellow while Claude
+continues; terminal turn failures and human-attention states are red. See the
+official [Claude Code Hooks reference](https://code.claude.com/docs/en/hooks).
 
 ## Privacy and safety
 

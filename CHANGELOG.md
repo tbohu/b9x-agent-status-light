@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 - 2026-08-28
+
+- Treat a recoverable Claude `PostToolUseFailure` as continued work instead of
+  a permanently latched red error.
+- Preserve red for terminal `StopFailure` events and states that need human
+  permission or input.
+- Normalize red states written by older versions for recoverable tool failures.
+
 ## 0.1.3 - 2026-08-28
 
 - Stop treating a long-running background shell, such as a development server,

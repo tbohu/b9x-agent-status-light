@@ -149,6 +149,16 @@ def session_states() -> list:
         if value.get("status") in PRIORITY:
             if (
                 value.get("provider") == "claude"
+                and value.get("event") == "PostToolUseFailure"
+            ):
+                value = dict(
+                    value,
+                    status="working",
+                    latched=False,
+                    detail="recovering_after_tool_failure",
+                )
+            if (
+                value.get("provider") == "claude"
                 and value.get("status") == "working"
                 and claude_transcript_completed(value)
             ):

@@ -85,6 +85,31 @@ class AgentStatusTests(unittest.TestCase):
         status, _ = monitor.desired_status(self.states(), 0, False)
         self.assertEqual(status, "error")
 
+    def test_tool_failure_stays_yellow_while_claude_recovers(self):
+        monitor = load_monitor()
+        self.event("claude", "PostToolUseFailure", tool_name="Bash", error="timeout")
+        state = self.states()[0]
+        self.assertEqual((state["status"], state["latched"]), ("working", False))
+        status, _ = monitor.desired_status(self.states(), 0, False)
+        self.assertEqual(status, "working")
+
+    def test_legacy_tool_failure_error_is_recoverable(self):
+        monitor = load_monitor()
+        sessions = self.state / "sessions"
+        sessions.mkdir()
+        (sessions / "claude-legacy.json").write_text(json.dumps({
+            "provider": "claude",
+            "session_id": "legacy",
+            "event": "PostToolUseFailure",
+            "detail": "timeout",
+            "status": "error",
+            "latched": True,
+            "updated_at": int(time.time()),
+        }))
+        with mock.patch.object(monitor, "STATE_ROOT", self.state):
+            states = monitor.session_states()
+        self.assertEqual((states[0]["status"], states[0]["latched"]), ("working", False))
+
     def test_completed_transcript_clears_stale_claude_working_state(self):
         monitor = load_monitor()
         transcript = self.state / "claude.jsonl"
