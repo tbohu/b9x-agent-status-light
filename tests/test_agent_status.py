@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -76,6 +77,43 @@ class AgentStatusTests(unittest.TestCase):
         self.event("claude", "StopFailure", error="rate_limit")
         status, _ = monitor.desired_status(self.states(), 0, False)
         self.assertEqual(status, "error")
+
+    def test_completed_transcript_clears_stale_claude_working_state(self):
+        monitor = load_monitor()
+        transcript = self.state / "claude.jsonl"
+        started = int(time.time())
+        transcript.write_text(json.dumps({
+            "type": "assistant",
+            "sessionId": "claude-session",
+            "isSidechain": False,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started + 1)),
+            "message": {"stop_reason": "end_turn", "content": [{"type": "text"}]},
+        }) + "\n")
+        self.event("claude", "UserPromptSubmit", transcript_path=str(transcript))
+        session_file = next((self.state / "sessions").glob("claude-*.json"))
+        value = json.loads(session_file.read_text())
+        value["updated_at"] = started
+        session_file.write_text(json.dumps(value))
+        with mock.patch.object(monitor, "STATE_ROOT", self.state):
+            states = monitor.session_states()
+        self.assertEqual(states[0]["status"], "idle")
+        self.assertEqual(states[0]["detail"], "transcript:end_turn")
+
+    def test_old_end_turn_does_not_clear_new_prompt(self):
+        monitor = load_monitor()
+        transcript = self.state / "claude.jsonl"
+        started = int(time.time())
+        transcript.write_text(json.dumps({
+            "type": "assistant",
+            "sessionId": "claude-session",
+            "isSidechain": False,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started - 10)),
+            "message": {"stop_reason": "end_turn", "content": [{"type": "text"}]},
+        }) + "\n")
+        self.event("claude", "UserPromptSubmit", transcript_path=str(transcript))
+        with mock.patch.object(monitor, "STATE_ROOT", self.state):
+            states = monitor.session_states()
+        self.assertEqual(states[0]["status"], "working")
 
     def test_new_hook_event_reapplies_unchanged_color(self):
         monitor = load_monitor()

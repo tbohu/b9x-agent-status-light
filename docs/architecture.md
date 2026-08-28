@@ -4,7 +4,7 @@
 Codex local history (read-only) ─┐
 Codex lifecycle hooks ───────────┤
                                  ├─ state files ─ monitor ─ b9x-light ─ BLE ─ B9X
-Claude Code lifecycle hooks ─────┘                red > yellow > green
+Claude hooks + transcript tail ──┘                red > yellow > green
 ```
 
 ## Components
@@ -12,9 +12,11 @@ Claude Code lifecycle hooks ─────┘                red > yellow > gre
 - `src/b9x_light.swift` — native CoreBluetooth scan, GATT validation, RGB write,
   and FFE4 acknowledgement validation.
 - `src/b9x_agent_event.py` — receives hook JSON on stdin and records only the
-  provider, session ID, event, status, and a short error/event label.
+  provider, session ID, transcript path, event, status, and a short
+  error/event label.
 - `src/b9x_agent_monitor.py` — reads session states and Codex's local turn
-  database, calculates the aggregate state, and invokes the BLE controller.
+  database, checks the tail of active Claude transcripts for a missed
+  `end_turn`, calculates the aggregate state, and invokes the BLE controller.
 - `src/install.py` — compiles and installs the runtime, merges hook settings,
   and creates the user LaunchAgent.
 
@@ -33,6 +35,11 @@ Codex SQLite is authoritative for Codex working/idle state. Hook state adds the
 approval information absent from SQLite. Historical failed turns present at
 first monitor startup are ignored; only a newly observed transition to
 `failed` is latched.
+
+Claude hooks are authoritative for task start and attention states. For a
+working session only, a matching main-agent `end_turn` at or after the recorded
+start/stop event clears stale working state. Older turns, sidechains, and other
+session IDs are ignored.
 
 ## Failure behavior
 

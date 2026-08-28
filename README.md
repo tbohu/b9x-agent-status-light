@@ -96,7 +96,9 @@ in read-only mode. Codex hooks add immediate approval-needed events. Claude
 Code uses lifecycle hooks for prompt start, stop, failures, permissions, and
 elicitation. A local LaunchAgent aggregates all sessions and calls the verified
 BLE CLI when the aggregate color changes or a new lifecycle event needs to
-reassert the current color.
+reassert the current color. If Claude Desktop omits the final hook after a
+background task, the monitor reads only the tail of that session's local
+transcript and accepts a matching, current main-agent `end_turn` as completion.
 
 See [architecture](docs/architecture.md) and the
 [verified B9X protocol](docs/protocol.md).
@@ -116,6 +118,8 @@ covered by its hooks. See the official [Claude Code Hooks reference](https://cod
 
 - No network request is made by this project.
 - Hook payloads stay local; prompts and tool inputs are not stored.
+- Claude transcript content is not copied; only the latest matching main-agent
+  timestamp and stop reason are inspected locally.
 - The Codex database is opened read-only.
 - Only the verified RGB command is sent to the B9X.
 - The project does not control fan speed or firmware.

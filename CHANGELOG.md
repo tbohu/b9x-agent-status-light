@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 - 2026-08-28
+
+- Recover Claude Code completion when a background task ends without a final
+  lifecycle hook by checking the matching local transcript's latest main-agent
+  stop reason.
+- Reject stale, sidechain, mismatched-session, and pre-prompt completion data.
+
 ## 0.1.1 - 2026-08-28
 
 - Reapply the current B9X color when a new agent lifecycle event arrives, even

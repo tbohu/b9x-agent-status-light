@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 
@@ -26,6 +27,9 @@ CODEX_DB = Path(os.environ.get("B9X_CODEX_DB", str(Path.home() / ".codex/thread_
 MONITOR_STATE = STATE_ROOT / "monitor.json"
 CONTROL_STATE = STATE_ROOT / "control.json"
 WAKE_STATE = STATE_ROOT / "wake.json"
+CLAUDE_PROJECTS = Path(
+    os.environ.get("B9X_CLAUDE_PROJECTS", str(Path.home() / ".claude/projects"))
+)
 PRIORITY = {"idle": 0, "working": 1, "error": 2}
 COLOR = {"idle": "green", "working": "yellow", "error": "red"}
 RUNNING = True
@@ -73,11 +77,77 @@ def codex_snapshot(known: dict) -> tuple:
     return active, current, new_failure, new_start
 
 
+def iso_timestamp(value: object):
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def latest_main_assistant(path: Path, session_id: str):
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as stream:
+            start = max(0, size - 1024 * 1024)
+            stream.seek(start)
+            if start:
+                stream.readline()
+            lines = stream.readlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            value = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if (
+            value.get("type") != "assistant"
+            or value.get("sessionId") != session_id
+            or value.get("isSidechain")
+        ):
+            continue
+        message = value.get("message")
+        if not isinstance(message, dict):
+            continue
+        timestamp = iso_timestamp(value.get("timestamp"))
+        if timestamp is not None:
+            return timestamp, message.get("stop_reason")
+    return None
+
+
+def claude_transcript_completed(state: dict) -> bool:
+    session_id = str(state.get("session_id") or "")
+    configured = state.get("transcript_path")
+    if configured:
+        candidates = [Path(str(configured)).expanduser()]
+    elif session_id and Path(session_id).name == session_id:
+        candidates = list(CLAUDE_PROJECTS.glob(f"*/{session_id}.jsonl"))
+    else:
+        candidates = []
+    observations = [
+        observation
+        for candidate in candidates
+        if (observation := latest_main_assistant(candidate, session_id)) is not None
+    ]
+    if not observations:
+        return False
+    timestamp, stop_reason = max(observations, key=lambda item: item[0])
+    return stop_reason == "end_turn" and timestamp >= float(state.get("updated_at") or 0)
+
+
 def session_states() -> list:
     states = []
     for path in (STATE_ROOT / "sessions").glob("*.json"):
         value = read_json(path, {})
         if value.get("status") in PRIORITY:
+            if (
+                value.get("provider") == "claude"
+                and value.get("status") == "working"
+                and claude_transcript_completed(value)
+            ):
+                value = dict(value, status="idle", detail="transcript:end_turn")
             states.append(value)
     return states
 

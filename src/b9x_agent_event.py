@@ -87,6 +87,9 @@ def update_state(provider: str, payload: dict) -> dict:
         "detail": detail,
         "updated_at": int(time.time()),
     }
+    transcript_path = payload.get("transcript_path") or previous.get("transcript_path")
+    if transcript_path:
+        current["transcript_path"] = str(transcript_path)
     atomic_json(path, current)
     atomic_json(STATE_ROOT / "wake.json", {"updated_at": time.time()})
     return current
