@@ -99,6 +99,8 @@ BLE CLI when the aggregate color changes or a new lifecycle event needs to
 reassert the current color. If Claude Desktop omits the final hook after a
 background task, the monitor reads only the tail of that session's local
 transcript and accepts a matching, current main-agent `end_turn` as completion.
+Long-running background shells do not keep the Agent yellow after `Stop`, while
+subagents and other Agent-managed background work do.
 
 See [architecture](docs/architecture.md) and the
 [verified B9X protocol](docs/protocol.md).

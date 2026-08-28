@@ -68,9 +68,16 @@ class AgentStatusTests(unittest.TestCase):
     def test_background_task_stays_yellow(self):
         monitor = load_monitor()
         self.event("claude", "UserPromptSubmit")
-        self.event("claude", "Stop", background_tasks=[{"id": "1"}])
+        self.event("claude", "Stop", background_tasks=[{"id": "1", "type": "subagent"}])
         status, _ = monitor.desired_status(self.states(), 0, False)
         self.assertEqual(status, "working")
+
+    def test_background_shell_does_not_keep_agent_yellow(self):
+        monitor = load_monitor()
+        self.event("claude", "UserPromptSubmit")
+        self.event("claude", "Stop", background_tasks=[{"id": "1", "type": "shell"}])
+        status, reasons = monitor.desired_status(self.states(), 0, False)
+        self.assertEqual((status, reasons), ("idle", ["no active task"]))
 
     def test_stop_failure_is_red(self):
         monitor = load_monitor()
@@ -114,6 +121,28 @@ class AgentStatusTests(unittest.TestCase):
         with mock.patch.object(monitor, "STATE_ROOT", self.state):
             states = monitor.session_states()
         self.assertEqual(states[0]["status"], "working")
+
+    def test_legacy_stop_accepts_end_turn_just_before_hook(self):
+        monitor = load_monitor()
+        transcript = self.state / "claude.jsonl"
+        stopped = int(time.time())
+        transcript.write_text(json.dumps({
+            "type": "assistant",
+            "sessionId": "claude-session",
+            "isSidechain": False,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stopped - 2)),
+            "message": {"stop_reason": "end_turn", "content": [{"type": "text"}]},
+        }) + "\n")
+        self.event("claude", "Stop", background_tasks=[{"id": "legacy"}],
+                   transcript_path=str(transcript))
+        session_file = next((self.state / "sessions").glob("claude-*.json"))
+        value = json.loads(session_file.read_text())
+        value.pop("background_task_types", None)
+        value["updated_at"] = stopped
+        session_file.write_text(json.dumps(value))
+        with mock.patch.object(monitor, "STATE_ROOT", self.state):
+            states = monitor.session_states()
+        self.assertEqual(states[0]["status"], "idle")
 
     def test_new_hook_event_reapplies_unchanged_color(self):
         monitor = load_monitor()

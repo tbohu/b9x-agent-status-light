@@ -134,7 +134,12 @@ def claude_transcript_completed(state: dict) -> bool:
     if not observations:
         return False
     timestamp, stop_reason = max(observations, key=lambda item: item[0])
-    return stop_reason == "end_turn" and timestamp >= float(state.get("updated_at") or 0)
+    if state.get("event") == "Stop" and state.get("background_task_types"):
+        return False
+    threshold = float(state.get("updated_at") or 0)
+    if state.get("event") == "Stop" and "background_task_types" not in state:
+        threshold -= 5
+    return stop_reason == "end_turn" and timestamp >= threshold
 
 
 def session_states() -> list:

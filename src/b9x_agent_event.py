@@ -39,6 +39,18 @@ def state_path(provider: str, session_id: str) -> Path:
     return STATE_ROOT / "sessions" / f"{provider}-{digest}.json"
 
 
+def active_agent_background_types(payload: dict) -> list:
+    types = []
+    for task in payload.get("background_tasks") or []:
+        if not isinstance(task, dict):
+            types.append("unknown")
+            continue
+        task_type = str(task.get("type") or "unknown")
+        if task_type != "shell":
+            types.append(task_type)
+    return sorted(set(types))
+
+
 def update_state(provider: str, payload: dict) -> dict:
     event = payload.get("hook_event_name", "")
     session_id = str(payload.get("session_id") or payload.get("thread_id") or "unknown")
@@ -71,7 +83,7 @@ def update_state(provider: str, payload: dict) -> dict:
         detail = str(payload.get("notification_type"))
     elif event == "Stop":
         if not latched:
-            status = "working" if payload.get("background_tasks") else "idle"
+            status = "working" if active_agent_background_types(payload) else "idle"
     elif event == "SessionEnd":
         if not latched:
             status = "idle"
@@ -90,6 +102,8 @@ def update_state(provider: str, payload: dict) -> dict:
     transcript_path = payload.get("transcript_path") or previous.get("transcript_path")
     if transcript_path:
         current["transcript_path"] = str(transcript_path)
+    if event == "Stop":
+        current["background_task_types"] = active_agent_background_types(payload)
     atomic_json(path, current)
     atomic_json(STATE_ROOT / "wake.json", {"updated_at": time.time()})
     return current

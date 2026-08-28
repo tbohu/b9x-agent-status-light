@@ -41,6 +41,10 @@ working session only, a matching main-agent `end_turn` at or after the recorded
 start/stop event clears stale working state. Older turns, sidechains, and other
 session IDs are ignored.
 
+At Claude `Stop`, background shell processes are not Agent activity: a server
+may intentionally outlive the turn. Subagents, workflows, teammates, monitors,
+and unrecognized background task types continue to count as working.
+
 ## Failure behavior
 
 The BLE CLI returns non-zero for discovery, permission, connection, GATT,

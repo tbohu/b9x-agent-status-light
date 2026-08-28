@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.3 - 2026-08-28
+
+- Stop treating a long-running background shell, such as a development server,
+  as continued Agent execution after Claude reaches `end_turn`.
+- Continue treating subagents, workflows, teammates, monitors, and unknown
+  background task types as active work.
+- Clear legacy Stop states when the matching main-agent `end_turn` occurred
+  within five seconds before the hook.
+
 ## 0.1.2 - 2026-08-28
 
 - Recover Claude Code completion when a background task ends without a final
