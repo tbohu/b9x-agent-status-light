@@ -45,9 +45,9 @@ working session only, a matching main-agent `end_turn` at or after the recorded
 start/stop event clears stale working state. Older turns, sidechains, and other
 session IDs are ignored.
 
-At Claude `Stop`, background shell processes are not Agent activity: a server
-may intentionally outlive the turn. Subagents, workflows, teammates, monitors,
-and unrecognized background task types continue to count as working.
+Claude `Stop` marks the main Agent idle. Background helpers, servers, monitors,
+and subagents reported with that Stop do not keep the light yellow. The next
+automatic or manual `UserPromptSubmit` marks the session working again.
 
 ## Failure behavior
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 - 2026-08-29
+
+- Simplify Claude state: `UserPromptSubmit` is working and `Stop` or
+  `SessionEnd` is idle, regardless of background helper processes.
+- Treat `idle_prompt` as idle instead of human attention.
+- Normalize working Stop states written by older versions.
+
 ## 0.1.4 - 2026-08-28
 
 - Treat a recoverable Claude `PostToolUseFailure` as continued work instead of

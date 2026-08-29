@@ -65,17 +65,21 @@ class AgentStatusTests(unittest.TestCase):
         status, reasons = monitor.desired_status(self.states(), 0, False)
         self.assertEqual((status, reasons), ("idle", ["no active task"]))
 
-    def test_background_task_stays_yellow(self):
+    def test_stop_is_idle_even_with_background_helpers(self):
         monitor = load_monitor()
         self.event("claude", "UserPromptSubmit")
-        self.event("claude", "Stop", background_tasks=[{"id": "1", "type": "subagent"}])
-        status, _ = monitor.desired_status(self.states(), 0, False)
-        self.assertEqual(status, "working")
+        self.event("claude", "Stop", background_tasks=[
+            {"id": "1", "type": "subagent"},
+            {"id": "2", "type": "monitor"},
+            {"id": "3", "type": "shell"},
+        ])
+        status, reasons = monitor.desired_status(self.states(), 0, False)
+        self.assertEqual((status, reasons), ("idle", ["no active task"]))
 
-    def test_background_shell_does_not_keep_agent_yellow(self):
+    def test_idle_notification_is_green(self):
         monitor = load_monitor()
         self.event("claude", "UserPromptSubmit")
-        self.event("claude", "Stop", background_tasks=[{"id": "1", "type": "shell"}])
+        self.event("claude", "Notification", notification_type="idle_prompt")
         status, reasons = monitor.desired_status(self.states(), 0, False)
         self.assertEqual((status, reasons), ("idle", ["no active task"]))
 
@@ -147,24 +151,19 @@ class AgentStatusTests(unittest.TestCase):
             states = monitor.session_states()
         self.assertEqual(states[0]["status"], "working")
 
-    def test_legacy_stop_accepts_end_turn_just_before_hook(self):
+    def test_legacy_working_stop_is_idle(self):
         monitor = load_monitor()
-        transcript = self.state / "claude.jsonl"
-        stopped = int(time.time())
-        transcript.write_text(json.dumps({
-            "type": "assistant",
-            "sessionId": "claude-session",
-            "isSidechain": False,
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stopped - 2)),
-            "message": {"stop_reason": "end_turn", "content": [{"type": "text"}]},
-        }) + "\n")
-        self.event("claude", "Stop", background_tasks=[{"id": "legacy"}],
-                   transcript_path=str(transcript))
-        session_file = next((self.state / "sessions").glob("claude-*.json"))
-        value = json.loads(session_file.read_text())
-        value.pop("background_task_types", None)
-        value["updated_at"] = stopped
-        session_file.write_text(json.dumps(value))
+        sessions = self.state / "sessions"
+        sessions.mkdir()
+        (sessions / "claude-legacy.json").write_text(json.dumps({
+            "provider": "claude",
+            "session_id": "legacy",
+            "event": "Stop",
+            "detail": "Stop",
+            "status": "working",
+            "latched": False,
+            "updated_at": int(time.time()),
+        }))
         with mock.patch.object(monitor, "STATE_ROOT", self.state):
             states = monitor.session_states()
         self.assertEqual(states[0]["status"], "idle")

@@ -134,11 +134,7 @@ def claude_transcript_completed(state: dict) -> bool:
     if not observations:
         return False
     timestamp, stop_reason = max(observations, key=lambda item: item[0])
-    if state.get("event") == "Stop" and state.get("background_task_types"):
-        return False
     threshold = float(state.get("updated_at") or 0)
-    if state.get("event") == "Stop" and "background_task_types" not in state:
-        threshold -= 5
     return stop_reason == "end_turn" and timestamp >= threshold
 
 
@@ -147,6 +143,12 @@ def session_states() -> list:
     for path in (STATE_ROOT / "sessions").glob("*.json"):
         value = read_json(path, {})
         if value.get("status") in PRIORITY:
+            if (
+                value.get("provider") == "claude"
+                and value.get("event") == "Stop"
+                and value.get("status") == "working"
+            ):
+                value = dict(value, status="idle", latched=False, detail="Stop")
             if (
                 value.get("provider") == "claude"
                 and value.get("event") == "PostToolUseFailure"
