@@ -185,6 +185,64 @@ class AgentStatusTests(unittest.TestCase):
         light.assert_called_once()
         self.assertEqual(result["applied_color"], "yellow")
 
+    def test_status_transition_plays_sound_once(self):
+        monitor = load_monitor()
+        sounds = self.state / "sounds"
+        sounds.mkdir()
+        (sounds / "working.wav").write_bytes(b"wave")
+        runtime = {"desired_status": "idle", "desired_color": "green"}
+        completed = subprocess.CompletedProcess([], 0, "COLOR_SET color=yellow\n", "")
+        player = mock.Mock(pid=123)
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor, "MONITOR_STATE", self.state / "monitor.json"),
+            mock.patch.object(monitor, "CONTROL_STATE", self.state / "control.json"),
+            mock.patch.object(monitor, "WAKE_STATE", self.state / "wake.json"),
+            mock.patch.object(monitor, "SOUND_ROOT", sounds),
+            mock.patch.object(monitor, "codex_snapshot", return_value=(1, {}, False, False)),
+            mock.patch.object(monitor.subprocess, "run", return_value=completed),
+            mock.patch.object(monitor.subprocess, "Popen", return_value=player) as play,
+        ):
+            runtime = monitor.reconcile(runtime)
+            runtime = monitor.reconcile(runtime)
+        play.assert_called_once_with(
+            ["/usr/bin/afplay", str(sounds / "working.wav")],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self.assertEqual(runtime["sound_event"], "working")
+
+    def test_quiet_mode_suppresses_transition_sound(self):
+        monitor = load_monitor()
+        (self.state / "control.json").write_text('{"quiet": true}')
+        runtime = {"desired_status": "idle", "desired_color": "green"}
+        completed = subprocess.CompletedProcess([], 0, "COLOR_SET color=yellow\n", "")
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor, "MONITOR_STATE", self.state / "monitor.json"),
+            mock.patch.object(monitor, "CONTROL_STATE", self.state / "control.json"),
+            mock.patch.object(monitor, "WAKE_STATE", self.state / "wake.json"),
+            mock.patch.object(monitor, "codex_snapshot", return_value=(1, {}, False, False)),
+            mock.patch.object(monitor.subprocess, "run", return_value=completed),
+            mock.patch.object(monitor.subprocess, "Popen") as play,
+        ):
+            result = monitor.reconcile(runtime)
+        play.assert_not_called()
+        self.assertTrue(result["quiet"])
+        self.assertEqual(result["sound_output"], "quiet")
+
+    def test_set_quiet_preserves_other_control_fields(self):
+        monitor = load_monitor()
+        control = self.state / "control.json"
+        control.write_text('{"acknowledge_at": 123}')
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor, "CONTROL_STATE", control),
+            mock.patch.object(monitor, "WAKE_STATE", self.state / "wake.json"),
+        ):
+            monitor.set_quiet(True)
+        self.assertEqual(json.loads(control.read_text()), {"acknowledge_at": 123, "quiet": True})
+
 
 if __name__ == "__main__":
     unittest.main()

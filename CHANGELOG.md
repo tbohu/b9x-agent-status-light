@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 - 2026-08-29
+
+- Add optional local voice alerts for working, attention, and idle transitions.
+- Add persistent `quiet on`, `quiet off`, and `quiet status` commands.
+- Keep playback failures independent from B9X light updates.
+- Keep reference and generated voice audio outside the public repository.
+
 ## 0.1.5 - 2026-08-29
 
 - Simplify Claude state: `UserPromptSubmit` is working and `Stop` or

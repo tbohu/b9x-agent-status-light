@@ -41,6 +41,19 @@ are currently unverified.
 
 No Homebrew package or Python package is required.
 
+## Optional voice alerts
+
+The monitor can play one local WAV file when the aggregate status changes:
+
+- `working.wav` — a task starts (yellow)
+- `attention.wav` — an error or human-attention state starts (red)
+- `idle.wav` — all tasks finish (green)
+
+The repository does not distribute voice samples or cloned audio. To enable
+alerts, create `local_sounds/` in the repository, place those three files in
+it, and run the installer. The files are copied only to the local runtime and
+are excluded from Git. Playback uses macOS `/usr/bin/afplay`.
+
 ## Install
 
 ```bash
@@ -82,12 +95,21 @@ Agent status service:
 b9x-agent-status status
 b9x-agent-status acknowledge
 b9x-agent-status reapply
+b9x-agent-status quiet on
+b9x-agent-status quiet off
+b9x-agent-status quiet status
 ```
 
 - `acknowledge` clears latched red states.
 - `reapply` performs one explicit retry after the B9X is powered back on.
 - The monitor writes when the desired color changes or a new lifecycle event
   arrives. It does not continuously poll or loop on BLE reconnects.
+- A voice alert plays once only when the aggregate status changes. Reapplying
+  a color and restarting the monitor do not replay it.
+- Quiet mode is persistent and suppresses audio only; light behavior is
+  unchanged.
+- Missing or unplayable audio is recorded by `status` and never blocks the
+  light update.
 
 ## How it works
 
@@ -129,6 +151,7 @@ official [Claude Code Hooks reference](https://code.claude.com/docs/en/hooks).
 - Only the verified RGB command is sent to the B9X.
 - The project does not control fan speed or firmware.
 - APKs, phone bugreports, HCI captures, and device identifiers are not included.
+- Voice references and generated voice alerts are not included.
 
 See [SECURITY.md](SECURITY.md).
 

@@ -7,6 +7,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class PublicReleaseTests(unittest.TestCase):
+    def test_private_voice_directory_is_ignored(self):
+        self.assertIn("local_sounds/", (ROOT / ".gitignore").read_text().splitlines())
+
     def test_private_artifacts_are_absent(self):
         self.assertFalse((ROOT / "captures").exists())
         self.assertFalse((ROOT / "work").exists())

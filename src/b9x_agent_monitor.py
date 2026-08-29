@@ -27,11 +27,13 @@ CODEX_DB = Path(os.environ.get("B9X_CODEX_DB", str(Path.home() / ".codex/thread_
 MONITOR_STATE = STATE_ROOT / "monitor.json"
 CONTROL_STATE = STATE_ROOT / "control.json"
 WAKE_STATE = STATE_ROOT / "wake.json"
+SOUND_ROOT = Path(os.environ.get("B9X_SOUND_DIR", str(STATE_ROOT / "sounds")))
 CLAUDE_PROJECTS = Path(
     os.environ.get("B9X_CLAUDE_PROJECTS", str(Path.home() / ".claude/projects"))
 )
 PRIORITY = {"idle": 0, "working": 1, "error": 2}
 COLOR = {"idle": "green", "working": "yellow", "error": "red"}
+SOUND_FILE = {"idle": "idle.wav", "working": "working.wav", "error": "attention.wav"}
 RUNNING = True
 
 
@@ -190,6 +192,23 @@ def desired_status(states: list, codex_active: int, db_error: bool) -> tuple:
     return winning[0][0], [reason for _, reason in winning]
 
 
+def play_status_sound(status: str, runtime: dict) -> None:
+    path = SOUND_ROOT / SOUND_FILE[status]
+    runtime.update({"sound_event": status, "sound_at": int(time.time())})
+    if not path.is_file():
+        runtime["sound_output"] = f"missing:{path}"
+        return
+    try:
+        process = subprocess.Popen(
+            ["/usr/bin/afplay", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        runtime.update({"sound_output": "started", "sound_pid": process.pid})
+    except OSError as error:
+        runtime["sound_output"] = str(error)
+
+
 def reconcile(runtime: dict, dry_run: bool = False, force: bool = False) -> dict:
     active, known, new_failure, new_start = codex_snapshot(runtime.get("codex_rows", {}))
     db_error = bool(runtime.get("codex_error_latched", False))
@@ -213,7 +232,9 @@ def reconcile(runtime: dict, dry_run: bool = False, force: bool = False) -> dict
 
     status, reasons = desired_status(session_states(), active, db_error)
     color = COLOR[status]
-    previous = runtime.get("desired_color")
+    previous_color = runtime.get("desired_color")
+    previous_status = runtime.get("desired_status")
+    quiet = bool(control.get("quiet", False))
     runtime.update(
         {
             "desired_status": status,
@@ -222,11 +243,12 @@ def reconcile(runtime: dict, dry_run: bool = False, force: bool = False) -> dict
             "codex_active_turns": active,
             "codex_rows": known,
             "codex_error_latched": db_error,
+            "quiet": quiet,
             "updated_at": int(time.time()),
         }
     )
 
-    if force or color != previous or runtime.get("light_output") == "dry-run":
+    if force or color != previous_color or runtime.get("light_output") == "dry-run":
         if dry_run:
             runtime.update({"simulated_color": color, "light_exit": 0, "light_output": "dry-run"})
         else:
@@ -244,6 +266,17 @@ def reconcile(runtime: dict, dry_run: bool = False, force: bool = False) -> dict
                 )
             except (OSError, subprocess.TimeoutExpired) as error:
                 runtime.update({"light_exit": 70, "light_output": str(error)})
+    if previous_status in PRIORITY and status != previous_status:
+        if quiet:
+            runtime.update(
+                {"sound_event": status, "sound_output": "quiet", "sound_at": int(time.time())}
+            )
+        elif dry_run:
+            runtime.update(
+                {"sound_event": status, "sound_output": "dry-run", "sound_at": int(time.time())}
+            )
+        else:
+            play_status_sound(status, runtime)
     atomic_json(MONITOR_STATE, runtime)
     return runtime
 
@@ -267,6 +300,16 @@ def request_reapply() -> None:
     atomic_json(CONTROL_STATE, control)
 
 
+def set_quiet(enabled: bool) -> None:
+    STATE_ROOT.mkdir(parents=True, exist_ok=True)
+    with (STATE_ROOT / "state.lock").open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        control = read_json(CONTROL_STATE, {})
+        control["quiet"] = enabled
+        atomic_json(CONTROL_STATE, control)
+        atomic_json(WAKE_STATE, {"updated_at": time.time()})
+
+
 def stop_handler(_signum, _frame) -> None:
     global RUNNING
     RUNNING = False
@@ -274,22 +317,35 @@ def stop_handler(_signum, _frame) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("run", "once", "status", "acknowledge", "reapply"))
+    parser.add_argument(
+        "command", choices=("run", "once", "status", "acknowledge", "reapply", "quiet")
+    )
+    parser.add_argument("quiet_action", choices=("on", "off", "status"), nargs="?")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
 
     if args.command == "status":
         runtime = read_json(MONITOR_STATE, {})
+        runtime["quiet"] = bool(read_json(CONTROL_STATE, {}).get("quiet", False))
         fields = (
             "desired_status", "desired_color", "applied_color", "light_exit",
-            "light_output", "reasons", "codex_active_turns", "updated_at",
+            "light_output", "reasons", "codex_active_turns", "quiet",
+            "sound_event", "sound_output", "sound_at", "updated_at",
         )
         print(json.dumps({key: runtime.get(key) for key in fields}, ensure_ascii=False, indent=2))
         return 0
     if args.command == "acknowledge":
         acknowledge()
         print("ATTENTION_ACKNOWLEDGED")
+        return 0
+    if args.command == "quiet":
+        if args.quiet_action in (None, "status"):
+            enabled = bool(read_json(CONTROL_STATE, {}).get("quiet", False))
+            print(f"QUIET={'ON' if enabled else 'OFF'}")
+        else:
+            set_quiet(args.quiet_action == "on")
+            print(f"QUIET={args.quiet_action.upper()}")
         return 0
 
     runtime = read_json(MONITOR_STATE, {})

@@ -17,6 +17,10 @@ latest matching main-agent timestamp and stop reason in memory.
 The installer backs up Codex and Claude Code configuration before merging its
 own hook entries. It does not change approval decisions or permissions.
 
+Optional voice references and generated alerts remain local. The installer
+copies only `working.wav`, `attention.wav`, and `idle.wav` from the ignored
+`local_sounds/` directory. It does not upload or redistribute those files.
+
 ## Reporting a vulnerability
 
 Please open a GitHub Security Advisory instead of a public issue when a report

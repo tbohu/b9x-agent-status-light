@@ -61,6 +61,22 @@ class InstallerTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 self.installer.write_wrapper(path, Path("/tmp/example"))
 
+    def test_copy_sounds_only_installs_named_alerts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            private = source / "local_sounds"
+            private.mkdir(parents=True)
+            for name in ("working.wav", "attention.wav", "idle.wav", "reference_16k.wav"):
+                (private / name).write_bytes(name.encode())
+            app_root = root / "app"
+            count = self.installer.copy_sounds(source, app_root)
+            self.assertEqual(count, 3)
+            self.assertEqual(
+                sorted(path.name for path in (app_root / "sounds").glob("*.wav")),
+                ["attention.wav", "idle.wav", "working.wav"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

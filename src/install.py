@@ -22,6 +22,7 @@ CLAUDE_EVENTS = (
     "UserPromptSubmit", "PermissionRequest", "PostToolUseFailure", "StopFailure",
     "Elicitation", "Stop", "SessionEnd",
 )
+SOUND_NAMES = ("working.wav", "attention.wav", "idle.wav")
 
 
 def read_json(path: Path) -> dict:
@@ -145,6 +146,19 @@ def write_wrapper(path: Path, target: Path, python: bool = False) -> None:
     atomic_bytes(path, content.encode(), 0o755)
 
 
+def copy_sounds(source_root: Path, app_root: Path) -> int:
+    source = source_root / "local_sounds"
+    destination = app_root / "sounds"
+    copied = 0
+    for name in SOUND_NAMES:
+        path = source / name
+        if path.is_file():
+            destination.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, destination / name)
+            copied += 1
+    return copied
+
+
 def launchctl(action: str, plist: Path) -> None:
     domain = f"gui/{os.getuid()}"
     if action == "stop":
@@ -183,6 +197,7 @@ def install(home: Path, source_root: Path, no_launch: bool) -> None:
     for name in ("b9x_agent_event.py", "b9x_agent_monitor.py"):
         shutil.copy2(source_root / "src" / name, source_dir / name)
         os.chmod(source_dir / name, 0o755)
+    sounds_installed = copy_sounds(source_root, app_root)
 
     backup(codex_hooks, backup_dir)
     backup(claude_settings, backup_dir)
@@ -204,6 +219,7 @@ def install(home: Path, source_root: Path, no_launch: bool) -> None:
         launchctl("start", plist)
     print(f"INSTALLED={app_root}")
     print(f"CLI_DIR={bin_dir}")
+    print(f"SOUNDS_INSTALLED={sounds_installed}")
     print("CODEX_HOOK_REVIEW_REQUIRED=use /hooks in Codex")
 
 

@@ -3,8 +3,9 @@
 ```text
 Codex local history (read-only) ─┐
 Codex lifecycle hooks ───────────┤
-                                 ├─ state files ─ monitor ─ b9x-light ─ BLE ─ B9X
-Claude hooks + transcript tail ──┘                red > yellow > green
+                                 ├─ state files ─ monitor ─┬─ b9x-light ─ BLE ─ B9X
+Claude hooks + transcript tail ──┘                         └─ afplay ─ local WAV
+                                               red > yellow > green
 ```
 
 ## Components
@@ -16,7 +17,8 @@ Claude hooks + transcript tail ──┘                red > yellow > green
   error/event label.
 - `src/b9x_agent_monitor.py` — reads session states and Codex's local turn
   database, checks the tail of active Claude transcripts for a missed
-  `end_turn`, calculates the aggregate state, and invokes the BLE controller.
+  `end_turn`, calculates the aggregate state, invokes the BLE controller, and
+  plays an optional local WAV once when that aggregate state changes.
 - `src/install.py` — compiles and installs the runtime, merges hook settings,
   and creates the user LaunchAgent.
 
@@ -55,3 +57,8 @@ The BLE CLI returns non-zero for discovery, permission, connection, GATT,
 notification, write, timeout, and disconnect errors. The monitor records that
 result and waits for a state change or explicit `reapply`; it does not retry in
 an infinite loop.
+
+Audio playback is non-blocking and independent from BLE. A missing file or
+`afplay` failure is recorded in monitor state and does not change the light
+result. Quiet mode suppresses playback without changing state aggregation or
+BLE behavior.
