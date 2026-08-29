@@ -34,6 +34,7 @@ CLAUDE_PROJECTS = Path(
 PRIORITY = {"idle": 0, "working": 1, "error": 2}
 COLOR = {"idle": "green", "working": "yellow", "error": "red"}
 SOUND_FILE = {"idle": "idle.wav", "working": "working.wav", "error": "attention.wav"}
+RATE_LIMIT_RED_SECONDS = 300
 RUNNING = True
 
 
@@ -145,6 +146,19 @@ def session_states() -> list:
     for path in (STATE_ROOT / "sessions").glob("*.json"):
         value = read_json(path, {})
         if value.get("status") in PRIORITY:
+            if (
+                value.get("provider") == "claude"
+                and value.get("event") == "StopFailure"
+                and value.get("detail") == "rate_limit"
+                and isinstance(value.get("updated_at"), (int, float))
+                and time.time() - value["updated_at"] >= RATE_LIMIT_RED_SECONDS
+            ):
+                value = dict(
+                    value,
+                    status="idle",
+                    latched=False,
+                    detail="rate_limit_expired",
+                )
             if (
                 value.get("provider") == "claude"
                 and value.get("event") == "Stop"

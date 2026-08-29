@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 - 2026-08-29
+
+- Keep Claude `rate_limit` failures red for five minutes, then remove that
+  expired error from status aggregation.
+- Continue latching all other terminal failures and human-attention states.
+
 ## 0.2.0 - 2026-08-29
 
 - Add optional local voice alerts for working, attention, and idle transitions.

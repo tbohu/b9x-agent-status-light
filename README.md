@@ -141,6 +141,12 @@ covered by its hooks. A recoverable tool failure remains yellow while Claude
 continues; terminal turn failures and human-attention states are red. See the
 official [Claude Code Hooks reference](https://code.claude.com/docs/en/hooks).
 
+Claude reports exhausted usage windows as a generic `rate_limit` failure. That
+state stays red for five minutes, then expires and the monitor recalculates the
+aggregate status: green if no task is active, or yellow if another task is
+running. Other terminal failures remain red until acknowledged or replaced by
+a new prompt.
+
 ## Privacy and safety
 
 - No network request is made by this project.

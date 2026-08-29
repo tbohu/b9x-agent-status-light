@@ -89,6 +89,65 @@ class AgentStatusTests(unittest.TestCase):
         status, _ = monitor.desired_status(self.states(), 0, False)
         self.assertEqual(status, "error")
 
+    def test_rate_limit_stays_red_for_five_minutes(self):
+        monitor = load_monitor()
+        sessions = self.state / "sessions"
+        sessions.mkdir()
+        (sessions / "claude-limit.json").write_text(json.dumps({
+            "provider": "claude",
+            "event": "StopFailure",
+            "detail": "rate_limit",
+            "status": "error",
+            "latched": True,
+            "updated_at": 1000,
+        }))
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor.time, "time", return_value=1299),
+        ):
+            states = monitor.session_states()
+        self.assertEqual(states[0]["status"], "error")
+
+    def test_rate_limit_expires_after_five_minutes(self):
+        monitor = load_monitor()
+        sessions = self.state / "sessions"
+        sessions.mkdir()
+        (sessions / "claude-limit.json").write_text(json.dumps({
+            "provider": "claude",
+            "event": "StopFailure",
+            "detail": "rate_limit",
+            "status": "error",
+            "latched": True,
+            "updated_at": 1000,
+        }))
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor.time, "time", return_value=1300),
+        ):
+            states = monitor.session_states()
+        self.assertEqual(states[0]["status"], "idle")
+        self.assertFalse(states[0]["latched"])
+        self.assertEqual(states[0]["detail"], "rate_limit_expired")
+
+    def test_non_rate_limit_failure_does_not_expire(self):
+        monitor = load_monitor()
+        sessions = self.state / "sessions"
+        sessions.mkdir()
+        (sessions / "claude-failure.json").write_text(json.dumps({
+            "provider": "claude",
+            "event": "StopFailure",
+            "detail": "network_error",
+            "status": "error",
+            "latched": True,
+            "updated_at": 1000,
+        }))
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor.time, "time", return_value=9999),
+        ):
+            states = monitor.session_states()
+        self.assertEqual(states[0]["status"], "error")
+
     def test_tool_failure_stays_yellow_while_claude_recovers(self):
         monitor = load_monitor()
         self.event("claude", "PostToolUseFailure", tool_name="Bash", error="timeout")
