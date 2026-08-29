@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 - 2026-08-29
+
+- Apply the five-minute red alert window to Codex five-hour and weekly usage
+  limits using its structured `usageLimitExceeded` error code.
+- Keep other Codex failures latched until acknowledgement or a new task.
+
 ## 0.2.1 - 2026-08-29
 
 - Keep Claude `rate_limit` failures red for five minutes, then remove that

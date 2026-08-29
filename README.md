@@ -147,6 +147,11 @@ aggregate status: green if no task is active, or yellow if another task is
 running. Other terminal failures remain red until acknowledged or replaced by
 a new prompt.
 
+Codex exposes both five-hour and weekly exhaustion through the structured
+`usageLimitExceeded` error code. Those failures follow the same five-minute
+rule. A new Codex task clears the old usage-limit alert immediately. Other
+Codex failures remain latched.
+
 ## Privacy and safety
 
 - No network request is made by this project.

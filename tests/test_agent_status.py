@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -147,6 +148,78 @@ class AgentStatusTests(unittest.TestCase):
         ):
             states = monitor.session_states()
         self.assertEqual(states[0]["status"], "error")
+
+    def test_codex_usage_limit_uses_structured_error_code(self):
+        monitor = load_monitor()
+        value = monitor.codex_failure_info(json.dumps({
+            "message": "localized or changing text",
+            "codexErrorInfo": "usageLimitExceeded",
+        }), 1234)
+        self.assertEqual(value, {"kind": "usage_limit", "at": 1234})
+
+    def test_codex_snapshot_reads_usage_limit_from_database(self):
+        monitor = load_monitor()
+        database = self.state / "history.sqlite"
+        connection = sqlite3.connect(database)
+        connection.execute(
+            "CREATE TABLE thread_turns (status TEXT, error_json TEXT, completed_at INTEGER)"
+        )
+        connection.execute(
+            "INSERT INTO thread_turns VALUES (?, ?, ?)",
+            ("failed", json.dumps({"codexErrorInfo": "usageLimitExceeded"}), 1234),
+        )
+        connection.commit()
+        connection.close()
+        with mock.patch.object(monitor, "CODEX_DB", database):
+            active, rows, failure, new_start = monitor.codex_snapshot({"99": "completed"})
+        self.assertEqual((active, rows, new_start), (0, {"1": "failed"}, False))
+        self.assertEqual(failure, {"kind": "usage_limit", "at": 1234})
+
+        with mock.patch.object(monitor, "CODEX_DB", database):
+            _, _, historical, _ = monitor.codex_snapshot({})
+        self.assertFalse(historical)
+
+    def test_codex_usage_limit_expires_after_five_minutes(self):
+        monitor = load_monitor()
+        runtime = {
+            "desired_status": "error",
+            "desired_color": "red",
+            "codex_error_latched": True,
+            "codex_error_kind": "usage_limit",
+            "codex_error_at": 1000,
+        }
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor, "MONITOR_STATE", self.state / "monitor.json"),
+            mock.patch.object(monitor, "CONTROL_STATE", self.state / "control.json"),
+            mock.patch.object(monitor, "WAKE_STATE", self.state / "wake.json"),
+            mock.patch.object(monitor, "codex_snapshot", return_value=(0, {}, False, False)),
+            mock.patch.object(monitor.time, "time", return_value=1300),
+        ):
+            result = monitor.reconcile(runtime, dry_run=True)
+        self.assertEqual(result["desired_status"], "idle")
+        self.assertFalse(result["codex_error_latched"])
+
+    def test_codex_non_usage_failure_does_not_expire(self):
+        monitor = load_monitor()
+        runtime = {
+            "desired_status": "error",
+            "desired_color": "red",
+            "codex_error_latched": True,
+            "codex_error_kind": "failure",
+            "codex_error_at": 1000,
+        }
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor, "MONITOR_STATE", self.state / "monitor.json"),
+            mock.patch.object(monitor, "CONTROL_STATE", self.state / "control.json"),
+            mock.patch.object(monitor, "WAKE_STATE", self.state / "wake.json"),
+            mock.patch.object(monitor, "codex_snapshot", return_value=(0, {}, False, False)),
+            mock.patch.object(monitor.time, "time", return_value=9999),
+        ):
+            result = monitor.reconcile(runtime, dry_run=True)
+        self.assertEqual(result["desired_status"], "error")
+        self.assertTrue(result["codex_error_latched"])
 
     def test_tool_failure_stays_yellow_while_claude_recovers(self):
         monitor = load_monitor()

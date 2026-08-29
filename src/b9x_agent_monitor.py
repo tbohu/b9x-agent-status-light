@@ -58,25 +58,41 @@ def read_json(path: Path, default: dict) -> dict:
         return default.copy()
 
 
+def codex_failure_info(error_json: object, completed_at: object) -> dict:
+    try:
+        error = json.loads(error_json) if isinstance(error_json, str) else {}
+    except json.JSONDecodeError:
+        error = {}
+    kind = "usage_limit" if error.get("codexErrorInfo") == "usageLimitExceeded" else "failure"
+    occurred_at = completed_at if isinstance(completed_at, (int, float)) else int(time.time())
+    return {"kind": kind, "at": occurred_at}
+
+
 def codex_snapshot(known: dict) -> tuple:
     if not CODEX_DB.exists():
         return 0, known, False, False
     try:
         connection = sqlite3.connect(f"file:{CODEX_DB}?mode=ro", uri=True, timeout=1)
         rows = connection.execute(
-            "SELECT rowid, status FROM thread_turns ORDER BY rowid DESC LIMIT 200"
+            "SELECT rowid, status, error_json, completed_at "
+            "FROM thread_turns ORDER BY rowid DESC LIMIT 200"
         ).fetchall()
         connection.close()
     except sqlite3.Error:
         return 0, known, False, False
 
-    current = {str(rowid): status for rowid, status in rows}
-    new_failure = any(
-        status == "failed" and known.get(str(rowid)) not in (None, "failed")
-        for rowid, status in rows
+    current = {str(rowid): status for rowid, status, _, _ in rows}
+    failures = [
+        codex_failure_info(error_json, completed_at)
+        for rowid, status, error_json, completed_at in rows
+        if status == "failed" and known and known.get(str(rowid)) != "failed"
+    ]
+    new_failure = failures[0] if failures else False
+    new_start = any(
+        status == "inProgress" and str(rowid) not in known
+        for rowid, status, _, _ in rows
     )
-    new_start = any(status == "inProgress" and str(rowid) not in known for rowid, status in rows)
-    active = sum(status == "inProgress" for _, status in rows)
+    active = sum(status == "inProgress" for _, status, _, _ in rows)
     return active, current, new_failure, new_start
 
 
@@ -185,7 +201,9 @@ def session_states() -> list:
     return states
 
 
-def desired_status(states: list, codex_active: int, db_error: bool) -> tuple:
+def desired_status(
+    states: list, codex_active: int, db_error: bool, db_error_kind: object = None
+) -> tuple:
     candidates = []
     for state in states:
         if state.get("status") == "idle":
@@ -198,7 +216,8 @@ def desired_status(states: list, codex_active: int, db_error: bool) -> tuple:
     if codex_active:
         candidates.append(("working", f"codex:{codex_active}_active_turn(s)"))
     if db_error:
-        candidates.append(("error", "codex:turn_failed"))
+        detail = "usage_limit" if db_error_kind == "usage_limit" else "turn_failed"
+        candidates.append(("error", f"codex:{detail}"))
     if not candidates:
         return "idle", ["no active task"]
     level = max(PRIORITY[status] for status, _ in candidates)
@@ -226,6 +245,17 @@ def play_status_sound(status: str, runtime: dict) -> None:
 def reconcile(runtime: dict, dry_run: bool = False, force: bool = False) -> dict:
     active, known, new_failure, new_start = codex_snapshot(runtime.get("codex_rows", {}))
     db_error = bool(runtime.get("codex_error_latched", False))
+    db_error_kind = runtime.get("codex_error_kind")
+    db_error_at = runtime.get("codex_error_at")
+    if (
+        db_error
+        and db_error_kind == "usage_limit"
+        and isinstance(db_error_at, (int, float))
+        and time.time() - db_error_at >= RATE_LIMIT_RED_SECONDS
+    ):
+        db_error = False
+        db_error_kind = None
+        db_error_at = None
     control = read_json(CONTROL_STATE, {})
     wake_at = read_json(WAKE_STATE, {}).get("updated_at")
     if wake_at != runtime.get("processed_wake_at"):
@@ -234,6 +264,8 @@ def reconcile(runtime: dict, dry_run: bool = False, force: bool = False) -> dict
     acknowledge_at = control.get("acknowledge_at")
     if acknowledge_at != runtime.get("processed_acknowledge_at"):
         db_error = False
+        db_error_kind = None
+        db_error_at = None
         runtime["processed_acknowledge_at"] = acknowledge_at
     reapply_at = control.get("reapply_at")
     if reapply_at != runtime.get("processed_reapply_at"):
@@ -241,10 +273,18 @@ def reconcile(runtime: dict, dry_run: bool = False, force: bool = False) -> dict
         runtime["processed_reapply_at"] = reapply_at
     if new_start:
         db_error = False
+        db_error_kind = None
+        db_error_at = None
     if new_failure:
         db_error = True
+        if isinstance(new_failure, dict):
+            db_error_kind = new_failure["kind"]
+            db_error_at = new_failure["at"]
+        else:
+            db_error_kind = "failure"
+            db_error_at = int(time.time())
 
-    status, reasons = desired_status(session_states(), active, db_error)
+    status, reasons = desired_status(session_states(), active, db_error, db_error_kind)
     color = COLOR[status]
     previous_color = runtime.get("desired_color")
     previous_status = runtime.get("desired_status")
@@ -257,6 +297,8 @@ def reconcile(runtime: dict, dry_run: bool = False, force: bool = False) -> dict
             "codex_active_turns": active,
             "codex_rows": known,
             "codex_error_latched": db_error,
+            "codex_error_kind": db_error_kind,
+            "codex_error_at": db_error_at,
             "quiet": quiet,
             "updated_at": int(time.time()),
         }

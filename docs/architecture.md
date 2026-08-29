@@ -42,6 +42,10 @@ It contributes red for 300 seconds, then expires and no longer participates in
 aggregation. If another task is active the result becomes yellow; otherwise it
 becomes green. Other failures do not expire automatically.
 
+Codex usage exhaustion is identified from `thread_turns.error_json` only when
+`codexErrorInfo` is exactly `usageLimitExceeded`. Five-hour and weekly limits
+share this code and use the same 300-second expiry. Message text is not parsed.
+
 Codex SQLite is authoritative for Codex working/idle state. Hook state adds the
 approval information absent from SQLite. Historical failed turns present at
 first monitor startup are ignored; only a newly observed transition to
