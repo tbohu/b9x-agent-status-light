@@ -130,6 +130,37 @@ class AgentStatusTests(unittest.TestCase):
         self.assertFalse(states[0]["latched"])
         self.assertEqual(states[0]["detail"], "rate_limit_expired")
 
+    def test_rate_limit_expiry_survives_session_end(self):
+        monitor = load_monitor()
+        sessions = self.state / "sessions"
+        sessions.mkdir()
+        (sessions / "claude-limit.json").write_text(json.dumps({
+            "provider": "claude",
+            "event": "SessionEnd",
+            "detail": "SessionEnd",
+            "status": "error",
+            "latched": True,
+            "error_kind": "rate_limit",
+            "error_at": 1000,
+            "updated_at": 1200,
+        }))
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor.time, "time", return_value=1300),
+        ):
+            states = monitor.session_states()
+        self.assertEqual(states[0]["status"], "idle")
+        self.assertEqual(states[0]["detail"], "rate_limit_expired")
+
+    def test_session_end_preserves_rate_limit_metadata(self):
+        self.event("claude", "StopFailure", error="rate_limit")
+        before = self.states()[0]
+        self.event("claude", "SessionEnd")
+        after = self.states()[0]
+        self.assertEqual(after["status"], "error")
+        self.assertEqual(after["error_kind"], "rate_limit")
+        self.assertEqual(after["error_at"], before["error_at"])
+
     def test_non_rate_limit_failure_does_not_expire(self):
         monitor = load_monitor()
         sessions = self.state / "sessions"

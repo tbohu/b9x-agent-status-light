@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3 - 2026-08-29
+
+- Preserve Claude rate-limit type and original timestamp across later `Stop`
+  and `SessionEnd` hooks so the five-minute expiry cannot be lost.
+
 ## 0.2.2 - 2026-08-29
 
 - Apply the five-minute red alert window to Codex five-hour and weekly usage

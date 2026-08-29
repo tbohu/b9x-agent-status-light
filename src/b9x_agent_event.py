@@ -51,12 +51,17 @@ def update_state(provider: str, payload: dict) -> dict:
     status = previous.get("status", "idle")
     latched = bool(previous.get("latched", False))
     detail = event
+    error_kind = previous.get("error_kind")
+    error_at = previous.get("error_at")
+    now = int(time.time())
 
     if event == "UserPromptSubmit":
         status, latched = "working", False
+        error_kind, error_at = None, None
     elif event == "PostToolUseFailure":
         status, latched = "working", False
         detail = "recovering_after_tool_failure"
+        error_kind, error_at = None, None
     elif event in {
         "PermissionRequest",
         "StopFailure",
@@ -65,9 +70,14 @@ def update_state(provider: str, payload: dict) -> dict:
     }:
         status, latched = "error", True
         detail = str(payload.get("error") or payload.get("tool_name") or event)
+        if event == "StopFailure" and detail == "rate_limit":
+            error_kind, error_at = "rate_limit", now
+        else:
+            error_kind, error_at = None, None
     elif event == "Notification" and payload.get("notification_type") == "permission_prompt":
         status, latched = "error", True
         detail = "permission_prompt"
+        error_kind, error_at = None, None
     elif event == "Notification" and payload.get("notification_type") == "idle_prompt":
         if not latched:
             status = "idle"
@@ -75,9 +85,11 @@ def update_state(provider: str, payload: dict) -> dict:
     elif event == "Stop":
         if not latched:
             status = "idle"
+            error_kind, error_at = None, None
     elif event == "SessionEnd":
         if not latched:
             status = "idle"
+            error_kind, error_at = None, None
     else:
         return previous
 
@@ -88,8 +100,10 @@ def update_state(provider: str, payload: dict) -> dict:
         "latched": latched,
         "event": event,
         "detail": detail,
-        "updated_at": int(time.time()),
+        "updated_at": now,
     }
+    if error_kind:
+        current.update({"error_kind": error_kind, "error_at": error_at})
     transcript_path = payload.get("transcript_path") or previous.get("transcript_path")
     if transcript_path:
         current["transcript_path"] = str(transcript_path)

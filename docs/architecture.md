@@ -41,6 +41,9 @@ The exception is a Claude `StopFailure` whose detail is exactly `rate_limit`.
 It contributes red for 300 seconds, then expires and no longer participates in
 aggregation. If another task is active the result becomes yellow; otherwise it
 becomes green. Other failures do not expire automatically.
+The event recorder preserves the original rate-limit type and timestamp when a
+later `Stop` or `SessionEnd` arrives, so those lifecycle events cannot restart
+or disable the expiry timer.
 
 Codex usage exhaustion is identified from `thread_turns.error_json` only when
 `codexErrorInfo` is exactly `usageLimitExceeded`. Five-hour and weekly limits

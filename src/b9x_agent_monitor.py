@@ -162,12 +162,16 @@ def session_states() -> list:
     for path in (STATE_ROOT / "sessions").glob("*.json"):
         value = read_json(path, {})
         if value.get("status") in PRIORITY:
+            error_kind = value.get("error_kind")
+            error_at = value.get("error_at")
+            if error_kind is None and value.get("detail") == "rate_limit":
+                error_kind = "rate_limit"
+                error_at = value.get("updated_at")
             if (
                 value.get("provider") == "claude"
-                and value.get("event") == "StopFailure"
-                and value.get("detail") == "rate_limit"
-                and isinstance(value.get("updated_at"), (int, float))
-                and time.time() - value["updated_at"] >= RATE_LIMIT_RED_SECONDS
+                and error_kind == "rate_limit"
+                and isinstance(error_at, (int, float))
+                and time.time() - error_at >= RATE_LIMIT_RED_SECONDS
             ):
                 value = dict(
                     value,
