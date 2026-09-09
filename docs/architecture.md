@@ -45,9 +45,14 @@ The event recorder preserves the original rate-limit type and timestamp when a
 later `Stop` or `SessionEnd` arrives, so those lifecycle events cannot restart
 or disable the expiry timer.
 
+Any other latched Claude error receives a five-minute grace period after a
+definitive `SessionEnd`, then stops participating in aggregation. An attention
+state whose session is still open remains latched.
+
 Codex usage exhaustion is identified from `thread_turns.error_json` only when
 `codexErrorInfo` is exactly `usageLimitExceeded`. Five-hour and weekly limits
 share this code and use the same 300-second expiry. Message text is not parsed.
+An `inProgress` Codex row older than 24 hours is ignored as abandoned state.
 
 Codex SQLite is authoritative for Codex working/idle state. Hook state adds the
 approval information absent from SQLite. Historical failed turns present at

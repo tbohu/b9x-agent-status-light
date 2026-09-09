@@ -147,10 +147,17 @@ aggregate status: green if no task is active, or yellow if another task is
 running. Other terminal failures remain red until acknowledged or replaced by
 a new prompt.
 
+A latched Claude error also expires five minutes after a definitive
+`SessionEnd`. While the session remains open, approval and human-attention
+states stay red until they are resolved or acknowledged.
+
 Codex exposes both five-hour and weekly exhaustion through the structured
 `usageLimitExceeded` error code. Those failures follow the same five-minute
 rule. A new Codex task clears the old usage-limit alert immediately. Other
 Codex failures remain latched.
+
+A Codex turn left `inProgress` for more than 24 hours is treated as abandoned
+and no longer keeps the aggregate status yellow. Recent turns are unaffected.
 
 ## Privacy and safety
 

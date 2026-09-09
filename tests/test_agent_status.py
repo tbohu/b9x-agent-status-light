@@ -152,6 +152,46 @@ class AgentStatusTests(unittest.TestCase):
         self.assertEqual(states[0]["status"], "idle")
         self.assertEqual(states[0]["detail"], "rate_limit_expired")
 
+    def test_ended_error_stays_red_for_five_minutes(self):
+        monitor = load_monitor()
+        sessions = self.state / "sessions"
+        sessions.mkdir()
+        (sessions / "claude-ended-error.json").write_text(json.dumps({
+            "provider": "claude",
+            "event": "SessionEnd",
+            "detail": "SessionEnd",
+            "status": "error",
+            "latched": True,
+            "updated_at": 1000,
+        }))
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor.time, "time", return_value=1299),
+        ):
+            states = monitor.session_states()
+        self.assertEqual(states[0]["status"], "error")
+
+    def test_ended_error_expires_after_five_minutes(self):
+        monitor = load_monitor()
+        sessions = self.state / "sessions"
+        sessions.mkdir()
+        (sessions / "claude-ended-error.json").write_text(json.dumps({
+            "provider": "claude",
+            "event": "SessionEnd",
+            "detail": "SessionEnd",
+            "status": "error",
+            "latched": True,
+            "updated_at": 1000,
+        }))
+        with (
+            mock.patch.object(monitor, "STATE_ROOT", self.state),
+            mock.patch.object(monitor.time, "time", return_value=1300),
+        ):
+            states = monitor.session_states()
+        self.assertEqual(states[0]["status"], "idle")
+        self.assertFalse(states[0]["latched"])
+        self.assertEqual(states[0]["detail"], "ended_error_expired")
+
     def test_session_end_preserves_rate_limit_metadata(self):
         self.event("claude", "StopFailure", error="rate_limit")
         before = self.states()[0]
@@ -193,11 +233,12 @@ class AgentStatusTests(unittest.TestCase):
         database = self.state / "history.sqlite"
         connection = sqlite3.connect(database)
         connection.execute(
-            "CREATE TABLE thread_turns (status TEXT, error_json TEXT, completed_at INTEGER)"
+            "CREATE TABLE thread_turns ("
+            "status TEXT, error_json TEXT, completed_at INTEGER, started_at INTEGER)"
         )
         connection.execute(
-            "INSERT INTO thread_turns VALUES (?, ?, ?)",
-            ("failed", json.dumps({"codexErrorInfo": "usageLimitExceeded"}), 1234),
+            "INSERT INTO thread_turns VALUES (?, ?, ?, ?)",
+            ("failed", json.dumps({"codexErrorInfo": "usageLimitExceeded"}), 1234, 1200),
         )
         connection.commit()
         connection.close()
@@ -209,6 +250,26 @@ class AgentStatusTests(unittest.TestCase):
         with mock.patch.object(monitor, "CODEX_DB", database):
             _, _, historical, _ = monitor.codex_snapshot({})
         self.assertFalse(historical)
+
+    def test_codex_month_old_in_progress_turn_is_not_active(self):
+        monitor = load_monitor()
+        database = self.state / "history.sqlite"
+        connection = sqlite3.connect(database)
+        connection.execute(
+            "CREATE TABLE thread_turns ("
+            "status TEXT, error_json TEXT, completed_at INTEGER, started_at INTEGER)"
+        )
+        connection.execute(
+            "INSERT INTO thread_turns VALUES ('inProgress', NULL, NULL, 1000)"
+        )
+        connection.commit()
+        connection.close()
+        with (
+            mock.patch.object(monitor, "CODEX_DB", database),
+            mock.patch.object(monitor.time, "time", return_value=1000 + 30 * 24 * 60 * 60),
+        ):
+            active, rows, failure, new_start = monitor.codex_snapshot({"99": "completed"})
+        self.assertEqual((active, rows, failure, new_start), (0, {"1": "inProgress"}, False, False))
 
     def test_codex_usage_limit_expires_after_five_minutes(self):
         monitor = load_monitor()

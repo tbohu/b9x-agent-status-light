@@ -35,6 +35,8 @@ PRIORITY = {"idle": 0, "working": 1, "error": 2}
 COLOR = {"idle": "green", "working": "yellow", "error": "red"}
 SOUND_FILE = {"idle": "idle.wav", "working": "working.wav", "error": "attention.wav"}
 RATE_LIMIT_RED_SECONDS = 300
+ENDED_SESSION_RED_SECONDS = 300
+CODEX_ACTIVE_MAX_AGE_SECONDS = 24 * 60 * 60
 RUNNING = True
 
 
@@ -74,25 +76,35 @@ def codex_snapshot(known: dict) -> tuple:
     try:
         connection = sqlite3.connect(f"file:{CODEX_DB}?mode=ro", uri=True, timeout=1)
         rows = connection.execute(
-            "SELECT rowid, status, error_json, completed_at "
+            "SELECT rowid, status, error_json, completed_at, started_at "
             "FROM thread_turns ORDER BY rowid DESC LIMIT 200"
         ).fetchall()
         connection.close()
     except sqlite3.Error:
         return 0, known, False, False
 
-    current = {str(rowid): status for rowid, status, _, _ in rows}
+    current = {str(rowid): status for rowid, status, _, _, _ in rows}
     failures = [
         codex_failure_info(error_json, completed_at)
-        for rowid, status, error_json, completed_at in rows
+        for rowid, status, error_json, completed_at, _ in rows
         if status == "failed" and known and known.get(str(rowid)) != "failed"
     ]
     new_failure = failures[0] if failures else False
+    now = time.time()
+    active_rows = [
+        (rowid, status)
+        for rowid, status, _, _, started_at in rows
+        if status == "inProgress"
+        and (
+            not isinstance(started_at, (int, float))
+            or now - started_at < CODEX_ACTIVE_MAX_AGE_SECONDS
+        )
+    ]
     new_start = any(
         status == "inProgress" and str(rowid) not in known
-        for rowid, status, _, _ in rows
+        for rowid, status in active_rows
     )
-    active = sum(status == "inProgress" for _, status, _, _ in rows)
+    active = len(active_rows)
     return active, current, new_failure, new_start
 
 
@@ -178,6 +190,19 @@ def session_states() -> list:
                     status="idle",
                     latched=False,
                     detail="rate_limit_expired",
+                )
+            if (
+                value.get("provider") == "claude"
+                and value.get("event") == "SessionEnd"
+                and value.get("status") == "error"
+                and isinstance(value.get("updated_at"), (int, float))
+                and time.time() - value["updated_at"] >= ENDED_SESSION_RED_SECONDS
+            ):
+                value = dict(
+                    value,
+                    status="idle",
+                    latched=False,
+                    detail="ended_error_expired",
                 )
             if (
                 value.get("provider") == "claude"

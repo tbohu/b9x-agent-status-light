@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.4 - 2026-09-09
+
+- Expire a latched Claude error five minutes after its session has ended so a
+  stale `SessionEnd` cannot permanently mask later task states.
+- Keep active approval and human-attention states latched while their session
+  remains open.
+- Ignore Codex turns left `inProgress` for more than 24 hours so an abandoned
+  database row cannot keep an otherwise idle system yellow.
+
 ## 0.2.3 - 2026-08-29
 
 - Preserve Claude rate-limit type and original timestamp across later `Stop`
